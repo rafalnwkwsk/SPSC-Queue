@@ -59,8 +59,7 @@ struct HeapBuffer {
   std::vector<T, Allocator> buffer_;
 
   static constexpr std::size_t padding = ((cacheLineSize - 1) / sizeof(T)) + 1;
-  static constexpr std::size_t MAX_SIZE_T =
-      std::numeric_limits<std::size_t>::max();
+  static constexpr std::size_t MAX_SIZE_T = (std::numeric_limits<std::size_t>::max)();
 
   explicit HeapBuffer(const std::size_t capacity,
                       const Allocator &allocator = Allocator())
@@ -157,11 +156,13 @@ public:
     requires std::constructible_from<T, Args &&...>
   void
   emplace(Args &&...args) noexcept(details::SPSC_NoThrow_Type<T, Args &&...>) {
+    
+    // Relaxed is safe here because only the writer thread ever writes to this atomic so it always sees it in proper order
     const auto writeIndex = writer_.writeIndex_.load(std::memory_order_relaxed);
     const auto nextWriteIndex =
         (writeIndex == base_type::capacity_ - 1) ? 0 : writeIndex + 1;
 
-    // Loop while waiting for reader to catch up
+    // Loop while waiting for reader to catch up - first time fires up when writer thread wraps around to 0
     while (nextWriteIndex == writer_.readIndexCache_) {
       writer_.readIndexCache_ =
           reader_.readIndex_.load(std::memory_order_acquire);
@@ -231,6 +232,8 @@ public:
   }
 
   void pop(T &val) noexcept(nothrow_v) {
+    
+    // Relaxed is safe here because only the reader thread ever writes to this atomic so it always sees it in proper order
     const auto readIndex = reader_.readIndex_.load(std::memory_order_relaxed);
 
     // Loop while waiting for writer to enqueue

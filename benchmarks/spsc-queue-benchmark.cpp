@@ -20,9 +20,13 @@
 #include <thread>    // for thread
 #include <vector>    // for vector
 
+#ifdef _WIN32
+#include <windows.h> // for SetThreadAffinityMask, GetCurrentThread
+#else
 #include <pthread.h> // for pthread_self, pthread_setaffinity_np
 #include <sched.h>   // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdlib.h>  // for exit
+#endif
+#include <cstdlib>   // for exit
 
 #include "dro/spsc-queue.hpp" // for dro::SPSCQueue
 
@@ -46,6 +50,13 @@ void pinThread(int cpu) {
   if (cpu < 0) {
     return;
   }
+#ifdef _WIN32
+  DWORD_PTR mask = static_cast<DWORD_PTR>(1) << cpu;
+  if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0) {
+    std::cerr << "SetThreadAffinityMask failed: " << GetLastError() << "\n";
+    exit(1);
+  }
+#else
   cpu_set_t cpuSet;
   CPU_ZERO(&cpuSet);
   CPU_SET(cpu, &cpuSet);
@@ -54,6 +65,7 @@ void pinThread(int cpu) {
     perror("pthread_setaffinity_np");
     exit(1);
   }
+#endif
 }
 
 int main(int argc, char *argv[]) {
